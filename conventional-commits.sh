@@ -251,13 +251,15 @@ install_script() {
 
 # Function to select gitmoji
 function select_gitmoji() {
-     if [ "$EMOJI_FORMAT" = "code" ]; then
-        GITMOJI_CODE=$(jq -r '.gitmojis[] | .code + " - " + .description' "$GITMOJI_FILE" | gum choose --limit=1)
-        GITMOJI_CODE=$(echo "$GITMOJI_CODE" | awk '{print $1}') # Extract only the emoji code
+    local gitmoji_list
+    if [ "$EMOJI_FORMAT" = "code" ]; then
+        gitmoji_list=$(jq -r '.gitmojis[] | .code + " - " + .description' "$GITMOJI_FILE")
     else
-        GITMOJI_CODE=$(jq -r '.gitmojis[] | .emoji + " - " + .description' "$GITMOJI_FILE" | gum choose --limit=1)
-        GITMOJI_CODE=$(echo "$GITMOJI_CODE" | awk '{print $1}') # Extract only the emoji
+        gitmoji_list=$(jq -r '.gitmojis[] | .emoji + " - " + .description' "$GITMOJI_FILE")
     fi
+
+    GITMOJI_CODE=$(printf "%s\n" "$gitmoji_list" | gum filter --placeholder "Filter gitmojis")
+    GITMOJI_CODE=$(echo "$GITMOJI_CODE" | awk '{print $1}') # Extract only the emoji or code
 }
 
 # Function to select commit type
