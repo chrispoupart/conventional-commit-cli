@@ -50,13 +50,17 @@ function check_gum_installed() {
                             ;;
                         fedora)
                             echo "Fedora detected. Installing Gum using DNF..."
-                            echo '[charm]
-                            name=Charm
-                            baseurl=https://repo.charm.sh/yum/
-                            enabled=1
-                            gpgcheck=1
-                            gpgkey=https://repo.charm.sh/yum/gpg.key' | sudo tee /etc/yum.repos.d/charm.repo
-                            sudo yum install gum
+                            local yum_repo
+                            yum_repo=(
+                                "[charm]"
+                                "name=Charm"
+                                "baseurl=https://repo.charm.sh/yum/"
+                                "enabled=1"
+                                "gpgcheck=1"
+                                "gpgkey=https://repo.charm.sh/yum/gpg.key"
+                            )
+                            printf '%s\n' "${yum_repo[@]}" | sudo tee /etc/yum.repos.d/charm.repo
+                            sudo yum -y install gum
                             ;;
                         *)
                             echo "Unsupported Linux distribution. Please visit the Gum GitHub project site for installation instructions."
