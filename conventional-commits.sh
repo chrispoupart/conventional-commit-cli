@@ -1,5 +1,15 @@
 #!/bin/bash
 
+set -e
+
+function script_exit() {
+    echo "Exiting without committing..."
+    exit 1
+}
+
+# Trap CTRL+C (SIGINT) and exit the script
+trap script_exit SIGINT
+
 CONFIG_PATH="$HOME/.config/git-conventional-commits"
 GITMOJI_FILE="$CONFIG_PATH/gitmojis.json"
 CONFIG_FILE="$CONFIG_PATH/config.sh"
@@ -16,6 +26,7 @@ EMOJI_FORMAT="emoji"
 INCLUDE_JIRA_ISSUE_SLUG=true
 SCOPES=()
 VSCODE_CONVENTIONAL_COMMIT_COMPAT=true
+SHOW_EDITOR=false
 
 # Enable for debugging
 VERBOSE=${VERBOSE:-false}
@@ -273,6 +284,9 @@ VSCODE_CONVENTIONAL_COMMIT_COMPAT=true
 # Check for unstaged files and offer to add them to the commit.
 CHECK_UNSTAGED=true
 
+# Show the commit message in the editor before committing.
+SHOW_EDITOR=false
+
 # Automatically commit the message without a prompt?
 AUTO_COMMIT=true
 
@@ -418,13 +432,15 @@ function check_and_stage_changes() {
             echo "Proceeding without adding changes."
         fi
     else
-        echo "No uncommitted changes detected."
+        if [ "$VERBOSE" = "true" ]; then
+            echo "No uncommitted changes detected."
+        fi
     fi
 }
 
 #######################################
-# Allows the user to select a gitmoji for the commit message.
-# Gitmojis are emojis representing various commit types.
+# Allows the user to select a gitmoji for the commit message or choose "None"
+# for no gitmoji. Gitmojis are emojis representing various commit types.
 #
 # Globals:
 #   GITMOJI_FILE
@@ -434,18 +450,30 @@ function check_and_stage_changes() {
 #   None
 #
 # Outputs:
-#   Sets the selected gitmoji to the global variable GITMOJI_CODE.
+#   Sets the selected gitmoji to the global variable GITMOJI_CODE or sets it
+#   to an empty value if "None" is selected.
 #######################################
 function select_gitmoji() {
     local gitmoji_list
+    local none_option="None - No gitmoji"
+
     if [ "$EMOJI_FORMAT" = "code" ]; then
         gitmoji_list=$(jq -r '.gitmojis[] | .code + " - " + .description' "$GITMOJI_FILE")
     else
         gitmoji_list=$(jq -r '.gitmojis[] | .emoji + " - " + .description' "$GITMOJI_FILE")
     fi
 
-    GITMOJI_CODE=$(printf "%s\n" "$gitmoji_list" | gum filter --placeholder "Filter gitmojis")
-    GITMOJI_CODE=$(echo "$GITMOJI_CODE" | awk '{print $1}') # Extract only the emoji or code
+    # Add the "None" option to the list
+    gitmoji_list="$none_option"$'\n'"$gitmoji_list"
+
+    GITMOJI_CODE=$(printf "%s\n" "$gitmoji_list" | gum filter --placeholder "Filter gitmojis or select 'None' for no gitmoji")
+
+    # Check if the "None" option was selected
+    if [[ "$GITMOJI_CODE" == "$none_option" ]]; then
+        GITMOJI_CODE=""  # Set GITMOJI_CODE to an empty value
+    else
+        GITMOJI_CODE=$(echo "$GITMOJI_CODE" | awk '{print $1}')  # Extract only the emoji or code
+    fi
 }
 
 #######################################
@@ -500,17 +528,18 @@ function include_jira_issue_slug() {
 #######################################
 function select_commit_type() {
     COMMIT_TYPES=(
-      "feat: A new feature"
-      "fix: A bug fix"
-      "docs: Documentation only changes"
-      "style: Changes that do not affect the meaning of the code"
-      "refactor: A code change that neither fixes a bug nor adds a feature"
-      "perf: A code change that improves performance"
-      "test: Adding missing tests or correcting existing tests"
-      "build: Changes that affect the build system or external dependencies"
-      "ci: Changes to our CI configuration files and scripts"
-      "chore: Other changes that don't modify src or test files"
-      "revert: Reverts a previous commit"
+        "feat: A new feature"
+        "fix: A bug fix"
+        "docs: Documentation only changes"
+        "style: Changes that do not affect the meaning of the code"
+        "refactor: A code change that neither fixes a bug nor adds a feature"
+        "perf: A code change that improves performance"
+        "test: Adding missing tests or correcting existing tests"
+        "build: Changes that affect the build system or external dependencies"
+        "ci: Changes to our CI configuration files and scripts"
+        "chore: Other changes that don't modify src or test files"
+        "revert: Reverts a previous commit"
+        "BREAKING CHANGE: A change that will break the current functionality"
     )
 
     # Extend commit types with custom types from config
@@ -519,7 +548,18 @@ function select_commit_type() {
     fi
 
     COMMIT_TYPE=$(printf "%s\n" "${COMMIT_TYPES[@]}" | gum filter --placeholder "Filter types")
-    COMMIT_TYPE=$(echo "$COMMIT_TYPE" | awk -F": " '{print $1}') # Extract only the commit type
+    SELECTED_TYPE=$(echo "$COMMIT_TYPE" | awk -F": " '{print $1}') # Extract only the commit type
+
+    # Check if the selected type is a breaking change
+    if [ "$SELECTED_TYPE" = "BREAKING CHANGE" ]; then
+        # Remove the "BREAKING CHANGE" option for the second selection
+        COMMIT_TYPES=("${COMMIT_TYPES[@]/"BREAKING CHANGE: A change that will break the current functionality"}")
+        COMMIT_TYPE=$(printf "%s\n" "${COMMIT_TYPES[@]}" | gum filter --placeholder "Select the type of BREAKING CHANGE...")
+        COMMIT_TYPE=$(echo "$COMMIT_TYPE" | awk -F": " '{print $1}') # Extract only the commit type
+        COMMIT_TYPE="$COMMIT_TYPE!" # Mark as breaking change
+    else
+        COMMIT_TYPE="$SELECTED_TYPE"
+    fi
 }
 
 #######################################
@@ -661,32 +701,53 @@ function create_commit_message() {
         COMMIT_SCOPE="($COMMIT_SCOPE)"
     fi
 
+    # Start constructing the commit message
+    COMMIT_MESSAGE="$COMMIT_TYPE$COMMIT_SCOPE: $GITMOJI_CODE $COMMIT_DESC"
+
+    # Initialize an empty variable for the commit body
+    COMMIT_BODY=""
+
+    # Prompt for additional commit body
+    if gum confirm "Add a more detailed commit body?"; then
+        COMMIT_BODY=$(gum write --placeholder "Enter additional commit message (CTRL+D to finish)" | fold -s -w 72)
+    fi
+
+    # Append the commit body if provided
+    if [ -n "$COMMIT_BODY" ]; then
+        COMMIT_MESSAGE="$COMMIT_MESSAGE"$'\n\n'"$COMMIT_BODY"
+    fi
+
     # Include JIRA issue slug if present in branch name
     include_jira_issue_slug
-
-    COMMIT_MESSAGE="$COMMIT_TYPE$COMMIT_SCOPE: $GITMOJI_CODE $COMMIT_DESC"
 
     # Append JIRA issue trailer if confirmed by the user
     if [ -n "$JIRA_ISSUE_TRAILER" ]; then
         COMMIT_MESSAGE="$COMMIT_MESSAGE"$'\n\n'"$JIRA_ISSUE_TRAILER"
     fi
 
-    if gum confirm "Add a more detailed commit body?"; then
-        COMMIT_BODY=$(gum write --placeholder "Enter additional commit message (CTRL+D to finish)" | fold -s -w 72)
+    # Check if it's a breaking change and prompt for details to be added last
+    if [[ "$COMMIT_TYPE" == *'!' ]]; then
+        BREAKING_CHANGE_DETAILS=$(gum input --placeholder "Enter BREAKING CHANGE details")
+        if [ -n "$BREAKING_CHANGE_DETAILS" ]; then
+            # Append BREAKING CHANGE footer as the last part of the commit message
+            COMMIT_MESSAGE="$COMMIT_MESSAGE"$'\n\n'"BREAKING CHANGE: $BREAKING_CHANGE_DETAILS"
+        fi
     fi
+
     if [ "$VERBOSE" = "true" ]; then
         printf "COMMIT_MESSAGE: %s\n" "$COMMIT_MESSAGE"
-        printf "COMMIT_BODY: %s\n" "$COMMIT_BODY"
     fi
 }
 
 #######################################
 # Performs the git commit with the constructed commit message and body.
+# If SHOW_EDITOR is true, opens the commit message in the default editor before committing.
 #
 # Globals:
 #   AUTO_COMMIT
 #   COMMIT_MESSAGE
 #   COMMIT_BODY
+#   SHOW_EDITOR
 #
 # Arguments:
 #   None
@@ -696,16 +757,29 @@ function create_commit_message() {
 #   Writes messages to stdout about the commit status.
 #######################################
 function perform_git_commit() {
-    if [ $AUTO_COMMIT = true ] || gum confirm "Commit your message?"; then
-        if [ -n "$COMMIT_MESSAGE" ] && [ -n "$COMMIT_BODY" ]; then
-            git commit -m "$COMMIT_MESSAGE" -m "$COMMIT_BODY"
-        elif [ -n "$COMMIT_MESSAGE" ]; then
-            git commit -m "$COMMIT_MESSAGE"
+    if [ "$AUTO_COMMIT" = true ] || gum confirm "Commit your message?"; then
+        local tmpfile
+        tmpfile=$(mktemp)
+        trap 'rm -f $tmpfile' EXIT
+
+        echo "$COMMIT_MESSAGE" > "$tmpfile"
+        if [ -n "$COMMIT_BODY" ] && [[ "$COMMIT_MESSAGE" != *"$COMMIT_BODY"* ]]; then
+            echo "" >> "$tmpfile"
+            echo "$COMMIT_BODY" >> "$tmpfile"
+        fi
+
+        # Open the commit message in the editor if SHOW_EDITOR is true
+        if [ "$SHOW_EDITOR" = true ]; then
+            ${EDITOR:-vi} "$tmpfile"
+        fi
+
+        if git commit -F "$tmpfile"; then
+            echo "Commit successful."
         else
-            printf "Commit message is empty. Commit aborted.\n"
+            echo "Commit failed."
         fi
     else
-        printf "Commit aborted.\n"
+        echo "Commit aborted."
     fi
 }
 
@@ -730,6 +804,8 @@ function main() {
         install_script
     else
         check_dependencies
+        # TODO: This errors on the first commit to a repo. Needs better
+        # handling.
         if [ "$CHECK_UNSTAGED" = "true" ]; then
             check_and_stage_changes
         fi
