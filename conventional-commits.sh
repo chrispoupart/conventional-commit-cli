@@ -3,14 +3,38 @@
 CONFIG_PATH="$HOME/.config/git-conventional-commits"
 GITMOJI_FILE="$CONFIG_PATH/gitmojis.json"
 CONFIG_FILE="$CONFIG_PATH/config.sh"
+PROJECT_CONFIG_FILE=".git_cm"
 BIN_PATH="$HOME/.local/bin"
 SCRIPT_NAME="cm"
 SCRIPT_PATH="$BIN_PATH/$SCRIPT_NAME"
+
+## Config defaults in case they are missing from sourced configs.
 AUTO_COMMIT=true
+CHECK_UNSTAGED=true
+CUSTOM_COMMIT_TYPES=()
+EMOJI_FORMAT="emoji"
+INCLUDE_JIRA_ISSUE_SLUG=true
+SCOPES=()
+VSCODE_CONVENTIONAL_COMMIT_COMPAT=true
 
 # Enable for debugging
 VERBOSE=${VERBOSE:-false}
 
+#######################################
+# Downloads the gitmojis.json file if it doesn't exist in the local
+# configuration path. The file contains gitmojis which are emojis representing
+# various commit types.
+#
+# Globals:
+#   CONFIG_PATH
+#   GITMOJI_FILE
+#
+# Arguments:
+#   None
+#
+# Outputs:
+#   Writes messages to stdout about the download status.
+#######################################
 function gather_gitmojis() {
   local gitmoji_url="https://raw.githubusercontent.com/carloscuesta/gitmoji/master/packages/gitmojis/src/gitmojis.json"
 
@@ -22,7 +46,20 @@ function gather_gitmojis() {
   fi
 }
 
-# Function to check if Gum is installed
+#######################################
+# Checks if the 'gum' command-line tool is installed and installs it if not.
+# 'gum' is used for interactive command-line interfaces.
+#
+# Globals:
+#   None
+#
+# Arguments:
+#   None
+#
+# Outputs:
+#   Writes messages to stdout about the installation status of 'gum'.
+#   Exits with status code 1 if the installation fails.
+#######################################
 function check_gum_installed() {
     if ! command -v gum &> /dev/null; then
         printf "Gum is not installed.\n"
@@ -92,6 +129,20 @@ function check_gum_installed() {
     fi
 }
 
+#######################################
+# Checks if the 'jq' command-line tool is installed and installs it if not.
+# 'jq' is used for processing JSON files.
+#
+# Globals:
+#   None
+#
+# Arguments:
+#   None
+#
+# Outputs:
+#   Writes messages to stdout about the installation status of 'jq'.
+#   Exits with status code 1 if the installation fails.
+#######################################
 function check_jq_installed() {
     if ! command -v jq &> /dev/null; then
         printf "jq is not installed.\n"
@@ -145,7 +196,19 @@ function check_jq_installed() {
     fi
 }
 
-# Function to check if ~/.local/bin is in PATH
+#######################################
+# Validates if '~/.local/bin' is in the user's PATH.
+# Provides instructions to add it if not present.
+#
+# Globals:
+#   PATH
+#
+# Arguments:
+#   None
+#
+# Outputs:
+#   Writes instructions to stdout on how to add '~/.local/bin' to PATH.
+#######################################
 function validate_local_bin_in_path() {
     if [[ ":$PATH:" != *":$HOME/.local/bin:"* ]]; then
         printf "It looks like ~/.local/bin is not in your PATH.\n"
@@ -156,8 +219,22 @@ function validate_local_bin_in_path() {
     fi
 }
 
-# Function to generate default config.sh file
-generate_default_config() {
+#######################################
+# Generates a default 'config.sh' file with default configuration values
+# if it doesn't exist in the local configuration path.
+#
+# Globals:
+#   CONFIG_PATH
+#   CONFIG_FILE
+#
+# Arguments:
+#   None
+#
+# Outputs:
+#   Writes messages to stdout about the creation status of the default
+#   'config.sh'.
+#######################################
+function generate_default_config() {
     local config_file_path="$CONFIG_PATH/config.sh"
 
     if [ ! -f "$config_file_path" ]; then
@@ -168,24 +245,37 @@ generate_default_config() {
 
         # Write default configuration content to config.sh
         cat > "$config_file_path" <<- 'EOF'
+#!/bin/bash
+# shellcheck disable=SC2034
+
 # Default configuration for Git Commit Message Wizard
 
 # Emoji format: "emoji" for actual emoji, "code" for emoji code
 #
-# "emoji" takes less space on the commit line, but is not supported by all git
-# clients. For most modern tooling, "emoji" works well.
+# NOTE: "emoji" takes less space on the commit line, but is not supported by all
+# git clients. For most modern tooling, "emoji" works well.
 EMOJI_FORMAT="emoji"
 
 # Additional Conventional Commit Types
 # Example: CUSTOM_COMMIT_TYPES=("metadata")
 CUSTOM_COMMIT_TYPES=()
 
+# Auto-append a git-trailer for your Jira issues?
+INCLUDE_JIRA_ISSUE_SLUG=true
+
 # Predefined scopes (add your scopes here)
 # Example: SCOPES=("frontend" "backend" "database")
 SCOPES=()
 
+# Enable compatibility with VSCode Conventional Commit Extension
+VSCODE_CONVENTIONAL_COMMIT_COMPAT=true
+
+# Check for unstaged files and offer to add them to the commit.
+CHECK_UNSTAGED=true
+
 # Automatically commit the message without a prompt?
 AUTO_COMMIT=true
+
 EOF
         printf "Default config.sh file created at %s\n" "$config_file_path"
     else
@@ -195,7 +285,21 @@ EOF
     fi
 }
 
-# Function to source configuration(s)
+#######################################
+# Sources the global 'config.sh' and project-specific '.git_cm' configuration
+# files if they exist.
+# Also reads the '.vscode/settings.json' file for additional scopes.
+#
+# Globals:
+#   CONFIG_FILE
+#   PROJECT_CONFIG_FILE
+#
+# Arguments:
+#   None
+#
+# Outputs:
+#   Writes messages to stdout about the sourcing status of configuration files.
+#######################################
 function source_config() {
     if [ -f "$CONFIG_FILE" ]; then
         # shellcheck source=/dev/null
@@ -204,6 +308,17 @@ function source_config() {
 
     # Get any VSCode Conventional Commit Extension project settings
     project_root_dir=$(git rev-parse --show-toplevel)  # Get the root directory of the Git project
+
+    # Define the path for the project-specific config
+    local project_specific_config
+    project_specific_config="$project_root_dir/$PROJECT_CONFIG_FILE"
+
+    # Source project-specific config if it exists
+    if [ -f "$project_specific_config" ]; then
+        # shellcheck source=/dev/null
+        source "$project_specific_config"
+    fi
+
     local settings_json="$project_root_dir/.vscode/settings.json"
 
     if [ -f "$settings_json" ]; then
@@ -222,7 +337,20 @@ function source_config() {
     fi
 }
 
-# Check dependencies
+#######################################
+# Checks and installs dependencies, validates the local bin path,
+# generates the default config, and sources the configurations.
+#
+# Globals:
+#   None
+#
+# Arguments:
+#   None
+#
+# Outputs:
+#   Writes messages to stdout about the status of dependency checks and
+#   installations.
+#######################################
 function check_dependencies() {
     gather_gitmojis
     check_gum_installed
@@ -232,8 +360,22 @@ function check_dependencies() {
     source_config
 }
 
-# Function to install the script
-install_script() {
+#######################################
+# Installs the script by copying it to the '~/.local/bin' directory
+# and setting up a git alias 'cm'.
+#
+# Globals:
+#   BIN_PATH
+#   SCRIPT_NAME
+#   SCRIPT_PATH
+#
+# Arguments:
+#   None
+#
+# Outputs:
+#   Writes messages to stdout about the installation status of the script.
+#######################################
+function install_script() {
     mkdir -p "$BIN_PATH"
     cp "$0" "$SCRIPT_PATH"
     chmod +x "$SCRIPT_PATH"
@@ -249,7 +391,51 @@ install_script() {
     printf "Installation complete. Use 'git cm' to start your commits.\n"
 }
 
-# Function to select gitmoji
+#######################################
+# Checks for uncommitted changes in the git repository and offers to stage them.
+#
+# Globals:
+#   None
+#
+# Arguments:
+#   None
+#
+# Outputs:
+#   Writes the status of uncommitted changes and staging confirmation to stdout.
+#######################################
+function check_and_stage_changes() {
+    # Check for uncommitted changes
+    if ! git diff --quiet; then
+        echo "Uncommitted changes detected."
+        git status --short
+
+        # Ask the user if they want to add all changes to the commit
+        if gum confirm "Would you like to add all changes to the commit?"; then
+            # Add all changes
+            git add -A
+            echo "All changes added to the commit."
+        else
+            echo "Proceeding without adding changes."
+        fi
+    else
+        echo "No uncommitted changes detected."
+    fi
+}
+
+#######################################
+# Allows the user to select a gitmoji for the commit message.
+# Gitmojis are emojis representing various commit types.
+#
+# Globals:
+#   GITMOJI_FILE
+#   EMOJI_FORMAT
+#
+# Arguments:
+#   None
+#
+# Outputs:
+#   Sets the selected gitmoji to the global variable GITMOJI_CODE.
+#######################################
 function select_gitmoji() {
     local gitmoji_list
     if [ "$EMOJI_FORMAT" = "code" ]; then
@@ -262,8 +448,57 @@ function select_gitmoji() {
     GITMOJI_CODE=$(echo "$GITMOJI_CODE" | awk '{print $1}') # Extract only the emoji or code
 }
 
-# Function to select commit type
-select_commit_type() {
+#######################################
+# Includes a JIRA issue slug in the commit message if the branch name contains a
+# JIRA issue key.
+#
+# Globals:
+#   INCLUDE_JIRA_ISSUE_SLUG
+#
+# Arguments:
+#   None
+#
+# Outputs:
+#   Sets the JIRA issue slug to the global variable JIRA_ISSUE_TRAILER if
+#   confirmed by the user.
+#######################################
+function include_jira_issue_slug() {
+    if [ "$INCLUDE_JIRA_ISSUE_SLUG" = true ]; then
+        local branch_name
+        branch_name=$(git rev-parse --abbrev-ref HEAD)
+
+        # Regex to match JIRA issue slug (e.g., ABC-1234)
+        local jira_issue_regex='[A-Z]+-[0-9]+'
+        local jira_issue_slug
+        jira_issue_slug=$(echo "$branch_name" | grep -oE "$jira_issue_regex" | head -n 1)
+
+        if [ "$VERBOSE" = "true" ]; then
+            echo "jira_issue_slug: $jira_issue_slug"
+            echo "jira_issue_regex: $jira_issue_regex"
+        fi
+
+        if [ -n "$jira_issue_slug" ]; then
+            if gum confirm "Would you like to add 'jira-issue: [$jira_issue_slug]' to your commit message?"; then
+                JIRA_ISSUE_TRAILER="jira-issue: [$jira_issue_slug]"
+            fi
+        fi
+    fi
+}
+
+#######################################
+# Allows the user to select the type of commit from a list of standard and
+# custom commit types.
+#
+# Globals:
+#   CUSTOM_COMMIT_TYPES
+#
+# Arguments:
+#   None
+#
+# Outputs:
+#   Sets the selected commit type to the global variable COMMIT_TYPE.
+#######################################
+function select_commit_type() {
     COMMIT_TYPES=(
       "feat: A new feature"
       "fix: A bug fix"
@@ -287,8 +522,21 @@ select_commit_type() {
     COMMIT_TYPE=$(echo "$COMMIT_TYPE" | awk -F": " '{print $1}') # Extract only the commit type
 }
 
-# Function to select commit scope
-select_commit_scope() {
+#######################################
+# Allows the user to select or define the scope of the commit.
+#
+# Globals:
+#   SCOPES
+#   VSCODE_CONVENTIONAL_COMMIT_COMPAT
+#
+# Arguments:
+#   None
+#
+# Outputs:
+#   Sets the selected or defined commit scope to the global variable
+#   COMMIT_SCOPE.
+#######################################
+function select_commit_scope() {
     local special_scopes=("New Scope (add new project scope)" "New Scope (only use once)")
     local combined_scopes=("None" "${SCOPES[@]}" "${special_scopes[@]}")
 
@@ -300,7 +548,11 @@ select_commit_scope() {
             ;;
         "New Scope (add new project scope)")
             COMMIT_SCOPE=$(gum input --placeholder "Enter new scope")
-            add_scope_to_settings_json "$COMMIT_SCOPE"
+            if [ "$VSCODE_CONVENTIONAL_COMMIT_COMPAT" = true ]; then
+                add_scope_to_settings_json "$COMMIT_SCOPE"
+            else
+                add_scope_to_local_config "$COMMIT_SCOPE"
+            fi
             ;;
         "New Scope (only use once)")
             COMMIT_SCOPE=$(gum input --placeholder "Enter new scope")
@@ -315,9 +567,20 @@ select_commit_scope() {
     fi
 }
 
-# Function to add a new scope to .vscode/settings.json.
-# This aims to be compatible with the VSCode Conventional Commit Extension
-add_scope_to_settings_json() {
+#######################################
+# Adds a new scope to the '.vscode/settings.json' file.
+# This is compatible with the VSCode Conventional Commit Extension.
+#
+# Globals:
+#   None
+#
+# Arguments:
+#   new_scope - The new scope to be added.
+#
+# Outputs:
+#   Updates the '.vscode/settings.json' file with the new scope.
+#######################################
+function add_scope_to_settings_json() {
     local new_scope=$1
     local settings_json="$project_root_dir/.vscode/settings.json"
 
@@ -331,8 +594,66 @@ add_scope_to_settings_json() {
     fi
 }
 
-# Function to create commit message
-create_commit_message() {
+#######################################
+# Adds a new scope to the project-specific '.git_cm' configuration file.
+#
+# Globals:
+#   None
+#
+# Arguments:
+#   new_scope - The new scope to be added.
+#
+# Outputs:
+#   Updates the project-specific '.git_cm' configuration file with the new
+#   scope.
+#######################################
+function add_scope_to_local_config() {
+    local new_scope=$1
+    local project_specific_config="$project_root_dir/$PROJECT_CONFIG_FILE"
+
+    if [ -f "$project_specific_config" ]; then
+        # Check if SCOPES array exists in the file and add the new scope
+        if grep -q "SCOPES=" "$project_specific_config"; then
+            # Append the new scope to the existing SCOPES array
+            awk -v new_scope="\"$new_scope\"" '/^SCOPES=/ {
+                sub(/\)$/, "");
+                print $0 " " new_scope ")";
+                next;
+            }
+            {print}' "$project_specific_config" > tmp_config && mv tmp_config "$project_specific_config"
+        else
+            # Add a new SCOPES array with the new scope
+            echo "SCOPES=(\"$new_scope\")" >> "$project_specific_config"
+        fi
+    else
+        # Create the project-specific config file with the new SCOPES array
+        echo "#!/bin/bash" > "$project_specific_config"
+        # shellcheck disable=SC2129
+        echo "# shellcheck disable=SC2034" >> "$project_specific_config"
+        echo "# Project-specific configuration for Git Conventional Commit Wizard" >> "$project_specific_config"
+        echo "SCOPES=(\"$new_scope\")" >> "$project_specific_config"
+    fi
+}
+
+#######################################
+# Prompts the user to enter the commit message, constructs the commit message
+# by combining the selected type, scope, gitmoji, and description,
+# and offers to add a detailed commit body.
+#
+# Globals:
+#   COMMIT_TYPE
+#   COMMIT_SCOPE
+#   GITMOJI_CODE
+#   JIRA_ISSUE_TRAILER
+#
+# Arguments:
+#   None
+#
+# Outputs:
+#   Sets the constructed commit message to the global variables COMMIT_MESSAGE
+#   and COMMIT_BODY.
+#######################################
+function create_commit_message() {
     COMMIT_DESC=$(gum input --placeholder "Enter short description (50 chars max)")
 
     # shellcheck disable=SC2128
@@ -340,7 +661,15 @@ create_commit_message() {
         COMMIT_SCOPE="($COMMIT_SCOPE)"
     fi
 
+    # Include JIRA issue slug if present in branch name
+    include_jira_issue_slug
+
     COMMIT_MESSAGE="$COMMIT_TYPE$COMMIT_SCOPE: $GITMOJI_CODE $COMMIT_DESC"
+
+    # Append JIRA issue trailer if confirmed by the user
+    if [ -n "$JIRA_ISSUE_TRAILER" ]; then
+        COMMIT_MESSAGE="$COMMIT_MESSAGE"$'\n\n'"$JIRA_ISSUE_TRAILER"
+    fi
 
     if gum confirm "Add a more detailed commit body?"; then
         COMMIT_BODY=$(gum write --placeholder "Enter additional commit message (CTRL+D to finish)" | fold -s -w 72)
@@ -351,7 +680,22 @@ create_commit_message() {
     fi
 }
 
-perform_git_commit() {
+#######################################
+# Performs the git commit with the constructed commit message and body.
+#
+# Globals:
+#   AUTO_COMMIT
+#   COMMIT_MESSAGE
+#   COMMIT_BODY
+#
+# Arguments:
+#   None
+#
+# Outputs:
+#   Executes the git commit command with the constructed message and body.
+#   Writes messages to stdout about the commit status.
+#######################################
+function perform_git_commit() {
     if [ $AUTO_COMMIT = true ] || gum confirm "Commit your message?"; then
         if [ -n "$COMMIT_MESSAGE" ] && [ -n "$COMMIT_BODY" ]; then
             git commit -m "$COMMIT_MESSAGE" -m "$COMMIT_BODY"
@@ -365,13 +709,30 @@ perform_git_commit() {
     fi
 }
 
-# Main script execution
+#######################################
+# The main function that orchestrates the script execution.
+# It checks for the 'install' argument to either install the script
+# or proceed with the commit message creation and git commit process.
+#
+# Globals:
+#   CHECK_UNSTAGED
+#
+# Arguments:
+#   $1 - The first command-line argument passed to the script.
+#
+# Outputs:
+#   Depending on the argument, it either installs the script or initiates the
+#   wizard for the git commit process.
+#######################################
 function main() {
     if [[ "$1" == "install" ]]; then
         check_dependencies
         install_script
     else
         check_dependencies
+        if [ "$CHECK_UNSTAGED" = "true" ]; then
+            check_and_stage_changes
+        fi
         select_commit_type
         select_commit_scope
         select_gitmoji
