@@ -189,7 +189,7 @@ AUTO_COMMIT=true
 EOF
         echo "Default config.sh file created at $config_file_path"
     else
-        if [ $VERBOSE = "true" ]; then
+        if [ "$VERBOSE" = "true" ]; then
             echo "config.sh already exists at $config_file_path"
         fi
     fi
@@ -197,20 +197,39 @@ EOF
 
 # Function to source configuration(s)
 function source_config() {
-  if [ -f "$CONFIG_FILE" ]; then
-    # shellcheck source=/dev/null
-    source "$CONFIG_FILE"
-  fi
+    if [ -f "$CONFIG_FILE" ]; then
+        # shellcheck source=/dev/null
+        source "$CONFIG_FILE"
+    fi
+
+    # Get any VSCode Conventional Commit Extension project settings
+    project_root_dir=$(git rev-parse --show-toplevel)  # Get the root directory of the Git project
+    local settings_json="$project_root_dir/.vscode/settings.json"
+
+    if [ -f "$settings_json" ]; then
+        # Extract scopes from settings.json and append them to the SCOPES array
+        local project_scopes
+        project_scopes=$(jq -r '.["conventionalCommits.scopes"][]' "$settings_json")
+        if [ -n "$project_scopes" ]; then
+            SCOPES+=("$project_scopes")
+            # Make sure the SCOPES are unique
+            local sorted_unique_scopes=("$(printf '%s\n' "${SCOPES[@]}" | sort -u)")
+            SCOPES=("${sorted_unique_scopes[@]}")
+            if [ "$VERBOSE" = "true" ]; then
+                echo "SCOPES: ${SCOPES[*]}"
+            fi
+        fi
+    fi
 }
 
 # Check dependencies
 function check_dependencies() {
-  gather_gitmojis
-  check_gum_installed
-  check_jq_installed
-  validate_local_bin_in_path
-  generate_default_config
-  source_config
+    gather_gitmojis
+    check_gum_installed
+    check_jq_installed
+    validate_local_bin_in_path
+    generate_default_config
+    source_config
 }
 
 # Function to install the script
@@ -268,18 +287,45 @@ select_commit_type() {
 
 # Function to select commit scope
 select_commit_scope() {
-    if [ ${#SCOPES[@]} -ne 0 ]; then
-        if [ $VERBOSE = "true" ]; then
-            echo "Selecting Scope: ${SCOPES[@]}"
-        fi
-        # Predefined scopes available, use gum choose
-        COMMIT_SCOPE=$(printf "%s\n" "${SCOPES[@]}" | gum choose --limit=1)
+    local special_scopes=("New Scope (add new project scope)" "New Scope (only use once)")
+    local combined_scopes=("None" "${SCOPES[@]}" "${special_scopes[@]}")
+
+    COMMIT_SCOPE=$(printf "%s\n" "${combined_scopes[@]}" | gum choose --limit=1)
+
+    case "$COMMIT_SCOPE" in
+        "None")
+            COMMIT_SCOPE=""
+            ;;
+        "New Scope (add new project scope)")
+            COMMIT_SCOPE=$(gum input --placeholder "Enter new scope")
+            add_scope_to_settings_json "$COMMIT_SCOPE"
+            ;;
+        "New Scope (only use once)")
+            COMMIT_SCOPE=$(gum input --placeholder "Enter new scope")
+            ;;
+        *)
+            # Existing scope selected, no action needed
+            ;;
+    esac
+
+    if [ -n "$COMMIT_SCOPE" ]; then
+        COMMIT_SCOPE=("$COMMIT_SCOPE")
+    fi
+}
+
+# Function to add a new scope to .vscode/settings.json.
+# This aims to be compatible with the VSCode Conventional Commit Extension
+add_scope_to_settings_json() {
+    local new_scope=$1
+    local settings_json="$project_root_dir/.vscode/settings.json"
+
+    if [ -f "$settings_json" ]; then
+        # Add new scope to the settings.json file
+        jq --arg new_scope "$new_scope" '.["conventionalCommits.scopes"] += [$new_scope]' "$settings_json" > tmp.json && mv tmp.json "$settings_json"
     else
-        if [ $VERBOSE = "true" ]; then
-            echo "Entering Scope"
-        fi
-        # No predefined scopes, ask user to enter manually
-        COMMIT_SCOPE=$(gum input --placeholder "Enter scope (optional)")
+        # Create settings.json with the new scope
+        mkdir -p "$project_root_dir/.vscode"
+        echo "{\"conventionalCommits.scopes\": [\"$new_scope\"]}" > "$settings_json"
     fi
 }
 
@@ -287,6 +333,7 @@ select_commit_scope() {
 create_commit_message() {
     COMMIT_DESC=$(gum input --placeholder "Enter short description")
 
+    # shellcheck disable=SC2128
     if [ -n "$COMMIT_SCOPE" ]; then
         COMMIT_SCOPE="($COMMIT_SCOPE)"
     fi
@@ -296,7 +343,7 @@ create_commit_message() {
     if gum confirm "Add a more detailed commit body?"; then
         COMMIT_BODY=$(gum write --placeholder "Enter additional commit message (CTRL+D to finish)" | fold -s -w 72)
     fi
-    if [ $VERBOSE = "true" ]; then
+    if [ "$VERBOSE" = "true" ]; then
         echo "COMMIT_MESSAGE: $COMMIT_MESSAGE"
         echo "COMMIT_BODY: $COMMIT_BODY"
     fi

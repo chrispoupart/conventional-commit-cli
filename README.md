@@ -45,6 +45,12 @@ Available configurations:
 
 - `EMOJI_FORMAT`: Set to `"emoji"` for actual emojis or `"code"` for emoji
   short-codes.
+- `CUSTOM_COMMIT_TYPES`: Additional Conventional Commit Types.
+- `SCOPES`: Pre-defined list of scopes that you use frequently. Note: Scopes are
+  also ready from `.vscode/settings.json` for compatibility with the VSCode
+  Conventional Commit extension.
+- `AUTO_COMMIT`: When you complete the wizard, should it auto-commit to git?
+  (Default: true)
 
 ## Dependencies
 
