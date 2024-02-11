@@ -7,6 +7,9 @@ BIN_PATH="$HOME/.local/bin"
 SCRIPT_NAME="cm"
 SCRIPT_PATH="$BIN_PATH/$SCRIPT_NAME"
 
+# Enable for debugging
+VERBOSE=${VERBOSE:-false}
+
 function gather_gitmojis() {
   local gitmoji_url="https://raw.githubusercontent.com/carloscuesta/gitmoji/master/packages/gitmojis/src/gitmojis.json"
 
@@ -116,7 +119,7 @@ function check_jq_installed() {
                             ;;
                         fedora)
                             echo "Fedora detected. Installing jq using DNF..."
-                            sudo dnf install jq
+                            sudo dnf -y install jq
                             ;;
                         *)
                             echo "Unsupported Linux distribution. Please install jq manually."
@@ -152,8 +155,44 @@ function validate_local_bin_in_path() {
     fi
 }
 
-# Function to source project configuration
-function source_project_config() {
+# Function to generate default config.sh file
+generate_default_config() {
+    local config_file_path="$CONFIG_PATH/config.sh"
+
+    if [ ! -f "$config_file_path" ]; then
+        echo "Generating default config.sh file..."
+
+        # Create the config directory if it doesn't exist
+        mkdir -p "$CONFIG_PATH"
+
+        # Write default configuration content to config.sh
+        cat > "$config_file_path" <<- 'EOF'
+# Default configuration for Git Commit Message Wizard
+
+# Emoji format: "emoji" for actual emoji, "code" for emoji code
+#
+# "emoji" takes less space on the commit line, but is not supported by all git
+# clients. For most modern tooling, "emoji" works well.
+EMOJI_FORMAT="emoji"
+
+# Additional Conventional Commit Types
+# Example: CUSTOM_COMMIT_TYPES=("metadata")
+CUSTOM_COMMIT_TYPES=()
+
+# Predefined scopes (add your scopes here)
+# Example: SCOPES=("frontend" "backend" "database")
+SCOPES=()
+EOF
+        echo "Default config.sh file created at $config_file_path"
+    else
+        if [ $VERBOSE = "true" ]; then
+            echo "config.sh already exists at $config_file_path"
+        fi
+    fi
+}
+
+# Function to source configuration(s)
+function source_config() {
   if [ -f "$CONFIG_FILE" ]; then
     # shellcheck source=/dev/null
     source "$CONFIG_FILE"
@@ -166,17 +205,8 @@ function check_dependencies() {
   check_gum_installed
   check_jq_installed
   validate_local_bin_in_path
-}
-
-# Function to select gitmoji
-function select_gitmoji() {
-     if [ "$EMOJI_FORMAT" = "code" ]; then
-        GITMOJI_CODE=$(jq -r '.gitmojis[] | .code + " - " + .description' "$GITMOJI_FILE" | gum choose --limit=1)
-        GITMOJI_CODE=$(echo "$GITMOJI_CODE" | awk '{print $1}') # Extract only the emoji code
-    else
-        GITMOJI_CODE=$(jq -r '.gitmojis[] | .emoji + " - " + .description' "$GITMOJI_FILE" | gum choose --limit=1)
-        GITMOJI_CODE=$(echo "$GITMOJI_CODE" | awk '{print $1}') # Extract only the emoji
-    fi
+  generate_default_config
+  source_config
 }
 
 # Function to install the script
@@ -194,6 +224,17 @@ install_script() {
     fi
 
     echo "Installation complete. Use 'git cm' to start your commits."
+}
+
+# Function to select gitmoji
+function select_gitmoji() {
+     if [ "$EMOJI_FORMAT" = "code" ]; then
+        GITMOJI_CODE=$(jq -r '.gitmojis[] | .code + " - " + .description' "$GITMOJI_FILE" | gum choose --limit=1)
+        GITMOJI_CODE=$(echo "$GITMOJI_CODE" | awk '{print $1}') # Extract only the emoji code
+    else
+        GITMOJI_CODE=$(jq -r '.gitmojis[] | .emoji + " - " + .description' "$GITMOJI_FILE" | gum choose --limit=1)
+        GITMOJI_CODE=$(echo "$GITMOJI_CODE" | awk '{print $1}') # Extract only the emoji
+    fi
 }
 
 # Function to select commit type
@@ -221,9 +262,25 @@ select_commit_type() {
     COMMIT_TYPE=$(echo "$COMMIT_TYPE" | awk -F": " '{print $1}') # Extract only the commit type
 }
 
+# Function to select commit scope
+select_commit_scope() {
+    if [ ${#SCOPES[@]} -ne 0 ]; then
+        if [ $VERBOSE = "true" ]; then
+            echo "Selecting Scope: ${SCOPES[@]}"
+        fi
+        # Predefined scopes available, use gum choose
+        COMMIT_SCOPE=$(printf "%s\n" "${SCOPES[@]}" | gum choose --limit=1)
+    else
+        if [ $VERBOSE = "true" ]; then
+            echo "Entering Scope"
+        fi
+        # No predefined scopes, ask user to enter manually
+        COMMIT_SCOPE=$(gum input --placeholder "Enter scope (optional)")
+    fi
+}
+
 # Function to create commit message
 create_commit_message() {
-    COMMIT_SCOPE=$(gum input --placeholder "Enter scope (optional)")
     COMMIT_DESC=$(gum input --placeholder "Enter short description")
 
     if [ -n "$COMMIT_SCOPE" ]; then
@@ -234,6 +291,10 @@ create_commit_message() {
 
     if gum confirm "Add a more detailed commit body?"; then
         COMMIT_BODY=$(gum write --placeholder "Enter additional commit message (CTRL+D to finish)" | fold -s -w 72)
+    fi
+    if [ $VERBOSE = "true" ]; then
+        echo "COMMIT_MESSAGE: $COMMIT_MESSAGE"
+        echo "COMMIT_BODY: $COMMIT_BODY"
     fi
 }
 
@@ -255,6 +316,7 @@ function main() {
     else
         check_dependencies
         select_commit_type
+        select_commit_scope
         select_gitmoji
         create_commit_message
         perform_git_commit
