@@ -6,6 +6,7 @@ CONFIG_FILE="$CONFIG_PATH/config.sh"
 BIN_PATH="$HOME/.local/bin"
 SCRIPT_NAME="cm"
 SCRIPT_PATH="$BIN_PATH/$SCRIPT_NAME"
+AUTO_COMMIT=true
 
 # Enable for debugging
 VERBOSE=${VERBOSE:-false}
@@ -182,6 +183,9 @@ CUSTOM_COMMIT_TYPES=()
 # Predefined scopes (add your scopes here)
 # Example: SCOPES=("frontend" "backend" "database")
 SCOPES=()
+
+# Automatically commit the message without a prompt?
+AUTO_COMMIT=true
 EOF
         echo "Default config.sh file created at $config_file_path"
     else
@@ -299,12 +303,16 @@ create_commit_message() {
 }
 
 perform_git_commit() {
-    if [ -n "$COMMIT_MESSAGE" ] && [ -n "$COMMIT_BODY" ]; then
-        git commit -m "$COMMIT_MESSAGE" -m "$COMMIT_BODY"
-    elif [ -n "$COMMIT_MESSAGE" ]; then
-        git commit -m "$COMMIT_MESSAGE"
+    if [ $AUTO_COMMIT = true ] || gum confirm "Commit your message?"; then
+        if [ -n "$COMMIT_MESSAGE" ] && [ -n "$COMMIT_BODY" ]; then
+            git commit -m "$COMMIT_MESSAGE" -m "$COMMIT_BODY"
+        elif [ -n "$COMMIT_MESSAGE" ]; then
+            git commit -m "$COMMIT_MESSAGE"
+        else
+            echo "Commit message is empty. Commit aborted."
+        fi
     else
-        echo "Commit message is empty. Commit aborted."
+        echo "Commit aborted."
     fi
 }
 
