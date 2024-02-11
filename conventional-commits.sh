@@ -283,7 +283,7 @@ select_commit_type() {
         COMMIT_TYPES+=("${CUSTOM_COMMIT_TYPES[@]}")
     fi
 
-    COMMIT_TYPE=$(printf "%s\n" "${COMMIT_TYPES[@]}" | gum choose --limit=1)
+    COMMIT_TYPE=$(printf "%s\n" "${COMMIT_TYPES[@]}" | gum filter --placeholder "Filter types")
     COMMIT_TYPE=$(echo "$COMMIT_TYPE" | awk -F": " '{print $1}') # Extract only the commit type
 }
 
@@ -333,7 +333,7 @@ add_scope_to_settings_json() {
 
 # Function to create commit message
 create_commit_message() {
-    COMMIT_DESC=$(gum input --placeholder "Enter short description")
+    COMMIT_DESC=$(gum input --placeholder "Enter short description (50 chars max)")
 
     # shellcheck disable=SC2128
     if [ -n "$COMMIT_SCOPE" ]; then
