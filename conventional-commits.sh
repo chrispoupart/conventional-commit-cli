@@ -493,7 +493,7 @@ function select_gitmoji() {
 function include_jira_issue_slug() {
 	if [ "$INCLUDE_JIRA_ISSUE_SLUG" = true ]; then
 		local branch_name
-		branch_name=$(git rev-parse --abbrev-ref HEAD)
+		branch_name=$(git branch --show-current)
 
 		# Regex to match JIRA issue slug (e.g., ABC-1234)
 		local jira_issue_regex='[A-Z]+-[0-9]+'
@@ -804,8 +804,6 @@ function main() {
 		install_script
 	else
 		check_dependencies
-		# TODO: This errors on the first commit to a repo. Needs better
-		# handling.
 		if [ "$CHECK_UNSTAGED" = "true" ]; then
 			check_and_stage_changes
 		fi
