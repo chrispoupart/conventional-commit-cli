@@ -420,15 +420,20 @@ function install_script() {
 function check_and_stage_changes() {
   # Check for uncommitted changes
   if ! git diff --quiet; then
-    echo "Uncommitted changes detected."
+    gum style \
+      --foreground 212 --border-foreground 212 --border double \
+      --align center --width 50 --margin "1 2" --padding "2 4" \
+      'Unstaged files detected...'
     # Ask the user if they want to add all changes to the commit
-    if gum confirm "Would you like to stage files to be committed?"; then
+    if gum confirm "Stage files to be added to this commit?"; then
       git status --short \
         | gum choose --no-limit --header="Use 'space' to select files..." \
         | awk '{print $2}' \
         | xargs git add
+      clear
     else
       echo "Proceeding without adding changes."
+      clear
     fi
   else
     if [ "$VERBOSE" = "true" ]; then
