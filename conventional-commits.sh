@@ -421,13 +421,12 @@ function check_and_stage_changes() {
   # Check for uncommitted changes
   if ! git diff --quiet; then
     echo "Uncommitted changes detected."
-    git status --short
-
     # Ask the user if they want to add all changes to the commit
-    if gum confirm "Would you like to add all changes to the commit?"; then
-      # Add all changes
-      git add -A
-      echo "All changes added to the commit."
+    if gum confirm "Would you like to stage files to be committed?"; then
+      git status --short \
+        | gum choose --no-limit --header="Use 'space' to select files..." \
+        | awk '{print $2}' \
+        | xargs git add
     else
       echo "Proceeding without adding changes."
     fi
