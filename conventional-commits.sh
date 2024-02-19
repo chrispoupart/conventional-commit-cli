@@ -406,6 +406,96 @@ function install_script() {
 }
 
 #######################################
+# Set the theme of gum using Environment variables.
+#
+# Arguments:
+#   $1: the desired theme
+#
+# Outputs:
+#   GUM ENV_ variables
+#######################################
+gum_theme() {
+  case $1 in
+    love)
+      export GUM_FILTER_INDICATOR="🏳️‍🌈 "
+      export GUM_FILTER_CURSOR_TEXT_FOREGROUND="#0085FF" # blue
+      export GUM_FILTER_HEADER_FOREGROUND="#FF0000" # red
+      export GUM_FILTER_MATCH_FOREGROUND="#3CFF00" # green
+      export GUM_FILTER_PROMPT_FOREGROUND="#FCF434" # yellow
+      export GUM_FILTER_TEXT_FOREGROUND="#8C00DB" # violet
+      ;;
+    otherside)
+      export GUM_FILTER_INDICATOR="🏳️‍⚧️ "
+      export GUM_FILTER_CURSOR_TEXT_FOREGROUND="#55CDFC" # Light Blue
+      export GUM_FILTER_HEADER_FOREGROUND="#F7A8B8" # Pink
+      export GUM_FILTER_MATCH_FOREGROUND="#FFFFFF" # White
+      export GUM_FILTER_PROMPT_FOREGROUND="#F7A8B8" # Pink
+      export GUM_FILTER_TEXT_FOREGROUND="#55CDFC" # Light Blue
+      ;;
+    enby)
+      export GUM_FILTER_INDICATOR="⚧️ "
+      export GUM_FILTER_CURSOR_TEXT_FOREGROUND="#9C59D1" # purple
+      export GUM_FILTER_HEADER_FOREGROUND="#FFFFFF" # White
+      export GUM_FILTER_MATCH_FOREGROUND="#FCF434" # yellow
+      export GUM_FILTER_PROMPT_FOREGROUND="#9C59D1" # purple
+      export GUM_FILTER_TEXT_FOREGROUND="#FCF434" # white
+      ;;
+    bicycle)
+      export GUM_FILTER_INDICATOR="🚲 "
+      export GUM_FILTER_CURSOR_TEXT_FOREGROUND="#D60270" # Pink
+      export GUM_FILTER_HEADER_FOREGROUND="#9B4F96" # Purple
+      export GUM_FILTER_MATCH_FOREGROUND="#0038A8" # Blue
+      export GUM_FILTER_PROMPT_FOREGROUND="#D60270" # Pink
+      export GUM_FILTER_TEXT_FOREGROUND="#9B4F96" # Purple
+      ;;
+    les_beans)
+      export GUM_FILTER_INDICATOR="👩🏻‍🤝‍👩🏽 "
+      export GUM_FILTER_CURSOR_TEXT_FOREGROUND="#D62900" # Dark Orange
+      export GUM_FILTER_HEADER_FOREGROUND="#FF9B55" # Light Orange
+      export GUM_FILTER_MATCH_FOREGROUND="#FFFFFF" # White
+      export GUM_FILTER_PROMPT_FOREGROUND="#D461A6" # Pink
+      export GUM_FILTER_TEXT_FOREGROUND="#A50062" # Dark Rose
+      ;;
+    pancake)
+      export GUM_FILTER_INDICATOR="🥞 "
+      export GUM_FILTER_CURSOR_TEXT_FOREGROUND="#FF218C" # Magenta
+      export GUM_FILTER_HEADER_FOREGROUND="#FFD800" # Yellow
+      export GUM_FILTER_MATCH_FOREGROUND="#21B1FF" # Cyan
+      export GUM_FILTER_PROMPT_FOREGROUND="#FF218C" # Magenta
+      export GUM_FILTER_TEXT_FOREGROUND="#FFD800" # Yellow
+      ;;
+    happy)
+      export GUM_FILTER_INDICATOR="👨🏽‍🤝‍👨🏼 "
+      export GUM_FILTER_CURSOR_TEXT_FOREGROUND="#008E00" # Dark Green
+      export GUM_FILTER_HEADER_FOREGROUND="#55CDFC" # Light Green
+      export GUM_FILTER_MATCH_FOREGROUND="#3CFF00" # Blue
+      export GUM_FILTER_PROMPT_FOREGROUND="#FCF434" # Yellow
+      export GUM_FILTER_TEXT_FOREGROUND="#FF8C00" # Orange
+      ;;
+    mercury)
+      export GUM_FILTER_INDICATOR="⚥ "
+      export GUM_FILTER_CURSOR_TEXT_FOREGROUND="#7902A5" # Purple
+      export GUM_FILTER_HEADER_FOREGROUND="#FFDA00" # Yellow
+      export GUM_FILTER_MATCH_FOREGROUND="#7902A5" # Purple
+      export GUM_FILTER_PROMPT_FOREGROUND="#FFDA00" # Yellow
+      export GUM_FILTER_TEXT_FOREGROUND="#7902A5" # Purple
+      ;;
+    watermelon)
+      export GUM_FILTER_INDICATOR="🍉 "
+      export GUM_FILTER_CURSOR_TEXT_FOREGROUND="#007A3D" # Green
+      export GUM_FILTER_HEADER_FOREGROUND="#007A3D" # Green
+      export GUM_FILTER_MATCH_FOREGROUND="#FFFFFF" # White
+      export GUM_FILTER_PROMPT_FOREGROUND="#007A3D" # Green
+      export GUM_FILTER_TEXT_FOREGROUND="#CE1126" # Red
+      ;;
+    *)
+      export GUM_FILTER_INDICATOR="> "
+      export GUM_FILTER_INDICATOR_FOREGROUND="#FFF" # white
+      export GUM_FILTER_HEADER_FOREGROUND="#5BCEFA" # blue
+  esac
+}
+
+#######################################
 # Checks for uncommitted changes in the git repository and offers to stage them.
 #
 # Globals:
@@ -808,6 +898,16 @@ function main() {
     install_script
   else
     check_dependencies
+
+    gum_themes=( love otherside enby bicycle les_beans pancake happy mercury )
+    if [[ "$(date "+%B")" = "June" ]]; then
+      random_index="$((RANDOM % ${#gum_themes[@]}))"
+      select_theme="${gum_themes[$random_index]}"
+      gum_theme "$select_theme"
+    else
+      gum_theme "${THEME:-watermelon}"
+    fi
+
     if [ "$CHECK_UNSTAGED" = "true" ]; then
       check_and_stage_changes
     fi
